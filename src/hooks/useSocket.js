@@ -19,10 +19,13 @@ export function useSocket(userId) {
     });
 
     newSocket.on("connect", () => {
-      console.log("🔌 Socket connected");
+      console.log(`🔌 Socket connected (${newSocket.id})`);
       setConnected(true);
 
-      // Join all drops for dashboard updates
+      if (userId) {
+        console.log(`🆔 Identifying as user: ${userId}`);
+        newSocket.emit("identify", userId);
+      }
       newSocket.emit("join-all-drops");
     });
 

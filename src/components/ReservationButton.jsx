@@ -36,27 +36,21 @@ function ReservationButton({ dropId, userId, stock, socket }) {
   }, []);
 
   const startPolling = useCallback(() => {
-    clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      if (phaseRef.current !== "queued" && phaseRef.current !== "waiting") return;
-      try {
-        const res = await fetch(`${MONOLITH_URL}/api/users/${userId}/reservations`);
-        const data = await res.json();
-        const match = data.find((r) => r.dropId === dropId);
-        if (match) activateReservation(match.id, match.expiresAt);
-      } catch (e) {}
-    }, 2000);
-  }, [userId, dropId, activateReservation]);
+    // Polling disabled to prove WebSocket-driven architecture
+    console.log("📡 WebSocket listening for reservation status...");
+  }, []);
 
   useEffect(() => {
     if (!socket || !userId || !dropId) return;
 
     const onResSuccess = (data) => {
+      console.log("⚡ SOCKET EVENT: reservation-success", data);
       if (data.userId === userId && data.dropId === dropId) {
         activateReservation(data.reservation.id, data.reservation.expiresAt);
       }
     };
     const onResWaiting = (data) => {
+      console.log("⚡ SOCKET EVENT: reservation-waiting", data);
       if (data.userId === userId && data.dropId === dropId) {
         setPhase("waiting");
         phaseRef.current = "waiting";
