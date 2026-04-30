@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 
-const RESERVATION_WINDOW_MS = 60000;
+const RESERVATION_WINDOW_MS = 120000; // Increased to 2 minutes
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 // Phases: idle → queued → reserved → purchasing → purchased | expired
@@ -11,7 +11,30 @@ function ReservationButton({ dropId, userId, stock, socket }) {
   const [secondsLeft, setSecondsLeft] = useState(60);
   const timerRef = useRef(null);
   const pollRef = useRef(null);
-  const phaseRef = useRef("idle"); // shadow of phase for use inside intervals
+  const phaseRef = useRef("idle");
+
+  // Check for existing reservation on mount or when userId changes
+  useEffect(() => {
+    if (!userId || !dropId) return;
+
+    const checkExisting = async () => {
+      try {
+        console.log("🔍 Checking for existing reservation...");
+        const res = await fetch(`${BASE_URL}/api/users/${userId}/reservations`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const match = data.find((r) => r.dropId === dropId);
+        if (match) {
+          console.log("✅ Found active reservation! Switching to Buy Now.");
+          activateReservation(match.id, match.expiresAt);
+        }
+      } catch (err) {
+        console.error("Failed to check existing reservations:", err);
+      }
+    };
+
+    checkExisting();
+  }, [userId, dropId, activateReservation]);
 
   useEffect(() => {
     phaseRef.current = phase;
