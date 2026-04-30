@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import toast from "react-hot-toast";
 
-const SOCKET_URL = import.meta.env.VITE_WS_URL || "http://localhost:3001";
+const SOCKET_URL = "https://sneak-realtime-server.onrender.com";
+// const SOCKET_URL =
+//   "https://sneak-realtime-server.onrender.com" ||
+//   import.meta.env.VITE_WS_URL ||
+//   "http://localhost:3001";
 
 export function useSocket(userId) {
   const [socket, setSocket] = useState(null);
