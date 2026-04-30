@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 
-const RESERVATION_WINDOW_MS = 120000; // Increased to 2 minutes
+const RESERVATION_WINDOW_MS = 120000; 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
-// Phases: idle → queued → waiting → reserved → purchasing → purchased | expired
 function ReservationButton({ dropId, userId, stock, socket }) {
   const [phase, setPhase] = useState("idle");
   const [reservation, setReservation] = useState(null);
@@ -13,60 +12,15 @@ function ReservationButton({ dropId, userId, stock, socket }) {
   const pollRef = useRef(null);
   const phaseRef = useRef("idle");
 
-  // Activate the reserved phase — called by either socket event or polling
-  const activateReservation = useCallback(
-    (reservationId, expiresAt) => {
-      clearInterval(pollRef.current);
-      setReservation({ id: reservationId });
-      setPhase("reserved");
-      phaseRef.current = "reserved";
-      startCountdown(expiresAt);
-    },
-    []
-  );
-
-  // Check for existing reservation on mount or when userId changes
-  useEffect(() => {
-    if (!userId || !dropId) return;
-
-    const checkExisting = async () => {
-      try {
-        console.log("🔍 Checking for existing reservation...");
-        const res = await fetch(`${BASE_URL}/api/users/${userId}/reservations`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const match = data.find((r) => r.dropId === dropId);
-        if (match) {
-          console.log("✅ Found active reservation! Switching to Buy Now.");
-          activateReservation(match.id, match.expiresAt);
-        }
-      } catch (err) {
-        console.error("Failed to check existing reservations:", err);
-      }
-    };
-
-    checkExisting();
-  }, [userId, dropId, activateReservation]);
-
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
-
-  useEffect(
-    () => () => {
-      clearInterval(timerRef.current);
-      clearInterval(pollRef.current);
-    },
-    []
-  );
-
-  // Start the 60-second countdown timer given an expiry timestamp
-  const startCountdown = (expiresAt) => {
+  const activateReservation = useCallback((reservationId, expiresAt) => {
+    clearInterval(pollRef.current);
+    setReservation({ id: reservationId });
+    setPhase("reserved");
+    phaseRef.current = "reserved";
+    
+    // Start countdown
     clearInterval(timerRef.current);
-    const secs = Math.max(
-      0,
-      Math.floor((new Date(expiresAt) - Date.now()) / 1000)
-    );
+    const secs = Math.max(0, Math.floor((new Date(expiresAt) - Date.now()) / 1000));
     setSecondsLeft(secs);
     timerRef.current = setInterval(() => {
       setSecondsLeft((s) => {
@@ -74,139 +28,85 @@ function ReservationButton({ dropId, userId, stock, socket }) {
           clearInterval(timerRef.current);
           setPhase("expired");
           phaseRef.current = "expired";
-          setTimeout(() => {
-            setPhase("idle");
-            phaseRef.current = "idle";
-          }, 3000);
+          setTimeout(() => { setPhase("idle"); phaseRef.current = "idle"; }, 3000);
           return 0;
         }
         return s - 1;
       });
     }, 1000);
-  };
+  }, []);
 
-  // Poll reservations API every 2s while in queued phase
   const startPolling = useCallback(() => {
     clearInterval(pollRef.current);
     const deadline = Date.now() + RESERVATION_WINDOW_MS;
-
     pollRef.current = setInterval(async () => {
-      // Socket event already handled it — stop polling
       if (phaseRef.current !== "queued" && phaseRef.current !== "waiting") {
         clearInterval(pollRef.current);
         return;
       }
-      // Deadline passed — give up
       if (Date.now() > deadline) {
         clearInterval(pollRef.current);
         setPhase("idle");
         phaseRef.current = "idle";
-        toast.error("Reservation timed out. Please try again.");
+        toast.error("Queue timeout. Please try again.");
         return;
       }
       try {
         const res = await fetch(`${BASE_URL}/api/users/${userId}/reservations`);
-        if (!res.ok) return;
         const data = await res.json();
         const match = data.find((r) => r.dropId === dropId);
-        if (match) {
-          activateReservation(match.id, match.expiresAt);
-        }
-      } catch {
-        // transient network error — keep polling
-      }
-    }, 2000);
+        if (match) activateReservation(match.id, match.expiresAt);
+      } catch (e) {}
+    }, 2500);
   }, [userId, dropId, activateReservation]);
 
-  // Socket event listeners
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !userId || !dropId) return;
 
-    const onReservationSuccess = (data) => {
-      if (data.userId !== userId || data.dropId !== dropId) return;
-      console.log("🚀 Reservation success received via socket");
-      activateReservation(data.reservation.id, data.reservation.expiresAt);
+    const onResSuccess = (data) => {
+      if (data.userId === userId && data.dropId === dropId) {
+        activateReservation(data.reservation.id, data.reservation.expiresAt);
+      }
     };
-
-    const onReservationFailed = (data) => {
-      if (data.userId !== userId || data.dropId !== dropId) return;
-      console.error("❌ Reservation failed received via socket:", data.message);
-      clearInterval(pollRef.current);
-      setPhase("idle");
-      phaseRef.current = "idle";
-      toast.error(data.message || "Reservation failed");
+    const onResWaiting = (data) => {
+      if (data.userId === userId && data.dropId === dropId) {
+        setPhase("waiting");
+        phaseRef.current = "waiting";
+      }
     };
-
-    const onReservationExpired = (data) => {
-      if (data.userId !== userId || data.dropId !== dropId) return;
-      console.log("⏰ Reservation expired received via socket");
-      clearInterval(timerRef.current);
-      clearInterval(pollRef.current);
-      setPhase("expired");
-      phaseRef.current = "expired";
-      setTimeout(() => {
+    const onResFailed = (data) => {
+      if (data.userId === userId && data.dropId === dropId) {
         setPhase("idle");
         phaseRef.current = "idle";
-      }, 3000);
+        toast.error(data.message || "Reservation failed");
+      }
     };
 
-    const onReservationWaiting = (data) => {
-      if (data.userId !== userId || data.dropId !== dropId) return;
-      console.log("⏳ Waitlist status received:", data.message);
-      setPhase("waiting");
-      phaseRef.current = "waiting";
-    };
-
-    socket.on("reservation-success", onReservationSuccess);
-    socket.on("reservation-failed", onReservationFailed);
-    socket.on("reservation-expired", onReservationExpired);
-    socket.on("reservation-waiting", onReservationWaiting);
-
-    // If we were already in queue, let's double check immediately
-    if (phaseRef.current === "queued" || phaseRef.current === "waiting") {
-      startPolling();
-    }
+    socket.on("reservation-success", onResSuccess);
+    socket.on("reservation-waiting", onResWaiting);
+    socket.on("reservation-failed", onResFailed);
 
     return () => {
-      socket.off("reservation-success", onReservationSuccess);
-      socket.off("reservation-failed", onReservationFailed);
-      socket.off("reservation-expired", onReservationExpired);
-      socket.off("reservation-waiting", onReservationWaiting);
+      socket.off("reservation-success", onResSuccess);
+      socket.off("reservation-waiting", onResWaiting);
+      socket.off("reservation-failed", onResFailed);
     };
-  }, [socket, userId, dropId, activateReservation, startPolling]);
+  }, [socket, userId, dropId, activateReservation]);
 
   const handleReserve = async () => {
-    if (!userId) {
-      toast.error("Please set a username first!");
-      return;
-    }
     setPhase("queued");
     phaseRef.current = "queued";
     try {
       const res = await fetch(`${BASE_URL}/api/drops/${dropId}/reserve`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
       });
-      const data = await res.json();
-      if (res.ok) {
-        startPolling();
-      } else {
-        toast.error(data.error || "Failed to reserve");
-        setPhase("idle");
-        phaseRef.current = "idle";
-      }
-    } catch {
-      toast.error("Network error. Please try again.");
-      setPhase("idle");
-      phaseRef.current = "idle";
-    }
+      if (res.ok) startPolling();
+      else { setPhase("idle"); phaseRef.current = "idle"; toast.error("Sold out or busy!"); }
+    } catch (e) { setPhase("idle"); phaseRef.current = "idle"; }
   };
 
   const handlePurchase = async () => {
-    if (!reservation) return;
     setPhase("purchasing");
     phaseRef.current = "purchasing";
     try {
@@ -215,105 +115,53 @@ function ReservationButton({ dropId, userId, stock, socket }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reservationId: reservation.id, userId }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        clearInterval(timerRef.current);
-        setPhase("purchased");
-        phaseRef.current = "purchased";
-        toast.success("Purchase successful!");
-      } else {
-        toast.error(data.error || "Purchase failed");
-        if (data.error.includes("expired")) {
-          clearInterval(timerRef.current);
-          setPhase("expired");
-          phaseRef.current = "expired";
-          setTimeout(() => {
-            setPhase("idle");
-            phaseRef.current = "idle";
-          }, 3000);
-        } else {
-          setPhase("reserved");
-          phaseRef.current = "reserved";
-        }
-      }
-    } catch {
-      toast.error("Network error. Please try again.");
-      setPhase("reserved");
-      phaseRef.current = "reserved";
-    }
+      if (res.ok) { setPhase("purchased"); phaseRef.current = "purchased"; toast.success("Copped!"); }
+      else { setPhase("reserved"); phaseRef.current = "reserved"; toast.error("Purchase failed!"); }
+    } catch (e) { setPhase("reserved"); phaseRef.current = "reserved"; }
   };
 
-  const isOutOfStock = stock !== null && stock <= 0;
-
-  if (phase === "purchased") {
-    return (
-      <div className="w-full py-2 px-4 rounded-lg font-medium text-center bg-green-100 text-green-700 border border-green-200">
-        ✓ Purchased!
-      </div>
-    );
-  }
-
-  if (phase === "expired") {
-    return (
-      <div className="w-full py-2 px-4 rounded-lg font-medium text-center bg-red-100 text-red-600 border border-red-200">
-        Reservation expired
-      </div>
-    );
-  }
+  if (phase === "purchased") return <div className="w-full py-3 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-200 text-center font-bold">✓ GOT 'EM</div>;
+  if (phase === "expired") return <div className="w-full py-3 rounded-xl bg-red-50 text-red-500 border border-red-100 text-center font-medium">Missed it! Try again.</div>;
 
   if (phase === "reserved" || phase === "purchasing") {
     return (
-      <div className="space-y-2">
-        <div className="flex justify-between text-xs text-gray-500">
-          <span>Reserved — expires in</span>
-          <span
-            className={`font-mono font-bold ${
-              secondsLeft <= 10
-                ? "text-red-600 animate-pulse"
-                : "text-orange-500"
-            }`}
-          >
-            {secondsLeft}s
-          </span>
+      <div className="space-y-3 p-4 rounded-2xl bg-white shadow-xl border border-gray-100 animate-in fade-in zoom-in duration-300">
+        <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-gray-400">
+          <span>Checkout Window</span>
+          <span className={secondsLeft <= 10 ? "text-red-500 animate-pulse" : "text-blue-500"}>{secondsLeft}s left</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-1.5">
-          <div
-            className={`h-1.5 rounded-full transition-all duration-1000 ${
-              secondsLeft <= 10 ? "bg-red-500" : "bg-orange-400"
-            }`}
+        <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+          <div 
+            className={`h-full transition-all duration-1000 ease-linear ${secondsLeft <= 10 ? "bg-red-500" : "bg-blue-500"}`}
             style={{ width: `${(secondsLeft / 60) * 100}%` }}
           />
         </div>
         <button
           onClick={handlePurchase}
           disabled={phase === "purchasing"}
-          className="w-full py-2 px-4 rounded-lg font-semibold bg-green-600 text-white hover:bg-green-700 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-wait"
+          className="w-full py-3 rounded-xl bg-black text-white font-bold hover:bg-gray-800 transition-all active:scale-95 disabled:opacity-50"
         >
-          {phase === "purchasing" ? "Processing..." : "Buy Now"}
+          {phase === "purchasing" ? "VERIFYING..." : "PURCHASE NOW"}
         </button>
       </div>
     );
   }
 
+  const isOutOfStock = stock <= 0;
   return (
     <button
       onClick={handleReserve}
-      disabled={phase === "queued" || phase === "waiting" || isOutOfStock || !userId}
-      className={`w-full py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
-        isOutOfStock
-          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-          : phase === "queued" || phase === "waiting"
-          ? "bg-yellow-400 text-black cursor-wait animate-pulse"
-          : "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
+      disabled={isOutOfStock || phase !== "idle"}
+      className={`w-full py-4 rounded-xl font-black uppercase tracking-tighter text-lg transition-all duration-300 transform active:scale-95 ${
+        isOutOfStock ? "bg-gray-100 text-gray-400 cursor-not-allowed" :
+        phase === "waiting" ? "bg-amber-400 text-black animate-pulse cursor-wait shadow-lg shadow-amber-200" :
+        phase === "queued" ? "bg-blue-600 text-white animate-pulse cursor-wait" :
+        "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-2xl hover:shadow-blue-200"
       }`}
     >
-      {isOutOfStock
-        ? "Sold Out"
-        : phase === "waiting"
-        ? "In Waitlist..."
-        : phase === "queued"
-        ? "In Queue..."
-        : "Reserve Now"}
+      {isOutOfStock ? "SOLD OUT" : 
+       phase === "waiting" ? "In Waitlist..." : 
+       phase === "queued" ? "Entering Queue..." : "Reserve Now"}
     </button>
   );
 }
