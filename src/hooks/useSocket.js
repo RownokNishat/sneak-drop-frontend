@@ -15,6 +15,7 @@ export function useSocket(userId) {
   useEffect(() => {
     const newSocket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
+      query: { userId },
     });
 
     newSocket.on("connect", () => {
