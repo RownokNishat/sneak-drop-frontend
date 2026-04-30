@@ -13,41 +13,6 @@ function ReservationButton({ dropId, userId, stock, socket }) {
   const pollRef = useRef(null);
   const phaseRef = useRef("idle");
 
-  // Check for existing reservation on mount or when userId changes
-  useEffect(() => {
-    if (!userId || !dropId) return;
-
-    const checkExisting = async () => {
-      try {
-        console.log("🔍 Checking for existing reservation...");
-        const res = await fetch(`${BASE_URL}/api/users/${userId}/reservations`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const match = data.find((r) => r.dropId === dropId);
-        if (match) {
-          console.log("✅ Found active reservation! Switching to Buy Now.");
-          activateReservation(match.id, match.expiresAt);
-        }
-      } catch (err) {
-        console.error("Failed to check existing reservations:", err);
-      }
-    };
-
-    checkExisting();
-  }, [userId, dropId, activateReservation]);
-
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
-
-  useEffect(
-    () => () => {
-      clearInterval(timerRef.current);
-      clearInterval(pollRef.current);
-    },
-    []
-  );
-
   // Start the 60-second countdown timer given an expiry timestamp
   const startCountdown = useCallback((expiresAt) => {
     clearInterval(timerRef.current);
@@ -83,6 +48,41 @@ function ReservationButton({ dropId, userId, stock, socket }) {
       startCountdown(expiresAt);
     },
     [startCountdown]
+  );
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  // Check for existing reservation on mount or when userId changes
+  useEffect(() => {
+    if (!userId || !dropId) return;
+
+    const checkExisting = async () => {
+      try {
+        console.log("🔍 Checking for existing reservation...");
+        const res = await fetch(`${BASE_URL}/api/users/${userId}/reservations`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const match = data.find((r) => r.dropId === dropId);
+        if (match) {
+          console.log("✅ Found active reservation! Switching to Buy Now.");
+          activateReservation(match.id, match.expiresAt);
+        }
+      } catch (err) {
+        console.error("Failed to check existing reservations:", err);
+      }
+    };
+
+    checkExisting();
+  }, [userId, dropId, activateReservation]);
+
+  useEffect(
+    () => () => {
+      clearInterval(timerRef.current);
+      clearInterval(pollRef.current);
+    },
+    []
   );
 
   // Poll reservations API every 2s while in queued phase
