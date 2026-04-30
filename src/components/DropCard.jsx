@@ -87,8 +87,8 @@ function DropCard({ drop, socket, userId }) {
           )}
         </div>
 
-        {/* Reserve Button */}
-        <ReservationButton dropId={drop.id} userId={userId} stock={stock} />
+        {/* Reserve / Purchase Button */}
+        <ReservationButton dropId={drop.id} userId={userId} stock={stock} socket={socket} />
       </div>
     </div>
   );
