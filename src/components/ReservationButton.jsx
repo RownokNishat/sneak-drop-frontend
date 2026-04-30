@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 
-const RESERVATION_WINDOW_MS = 120000; 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+// THE MONOLITH URL (Point this to your Render server)
+const MONOLITH_URL = import.meta.env.VITE_API_URL || "https://sneak-realtime-server.onrender.com";
 
 function ReservationButton({ dropId, userId, stock, socket }) {
   const [phase, setPhase] = useState("idle");
@@ -18,7 +18,6 @@ function ReservationButton({ dropId, userId, stock, socket }) {
     setPhase("reserved");
     phaseRef.current = "reserved";
     
-    // Start countdown
     clearInterval(timerRef.current);
     const secs = Math.max(0, Math.floor((new Date(expiresAt) - Date.now()) / 1000));
     setSecondsLeft(secs);
@@ -38,26 +37,15 @@ function ReservationButton({ dropId, userId, stock, socket }) {
 
   const startPolling = useCallback(() => {
     clearInterval(pollRef.current);
-    const deadline = Date.now() + RESERVATION_WINDOW_MS;
     pollRef.current = setInterval(async () => {
-      if (phaseRef.current !== "queued" && phaseRef.current !== "waiting") {
-        clearInterval(pollRef.current);
-        return;
-      }
-      if (Date.now() > deadline) {
-        clearInterval(pollRef.current);
-        setPhase("idle");
-        phaseRef.current = "idle";
-        toast.error("Queue timeout. Please try again.");
-        return;
-      }
+      if (phaseRef.current !== "queued" && phaseRef.current !== "waiting") return;
       try {
-        const res = await fetch(`${BASE_URL}/api/users/${userId}/reservations`);
+        const res = await fetch(`${MONOLITH_URL}/api/users/${userId}/reservations`);
         const data = await res.json();
         const match = data.find((r) => r.dropId === dropId);
         if (match) activateReservation(match.id, match.expiresAt);
       } catch (e) {}
-    }, 2500);
+    }, 2000);
   }, [userId, dropId, activateReservation]);
 
   useEffect(() => {
@@ -86,23 +74,25 @@ function ReservationButton({ dropId, userId, stock, socket }) {
     socket.on("reservation-waiting", onResWaiting);
     socket.on("reservation-failed", onResFailed);
 
+    if (phase === "queued" || phase === "waiting") startPolling();
+
     return () => {
       socket.off("reservation-success", onResSuccess);
       socket.off("reservation-waiting", onResWaiting);
       socket.off("reservation-failed", onResFailed);
     };
-  }, [socket, userId, dropId, activateReservation]);
+  }, [socket, userId, dropId, activateReservation, phase, startPolling]);
 
   const handleReserve = async () => {
     setPhase("queued");
     phaseRef.current = "queued";
     try {
-      const res = await fetch(`${BASE_URL}/api/drops/${dropId}/reserve`, {
+      const res = await fetch(`${MONOLITH_URL}/api/drops/${dropId}/reserve`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-user-id": userId },
       });
       if (res.ok) startPolling();
-      else { setPhase("idle"); phaseRef.current = "idle"; toast.error("Sold out or busy!"); }
+      else { setPhase("idle"); phaseRef.current = "idle"; toast.error("Sold out!"); }
     } catch (e) { setPhase("idle"); phaseRef.current = "idle"; }
   };
 
@@ -110,58 +100,50 @@ function ReservationButton({ dropId, userId, stock, socket }) {
     setPhase("purchasing");
     phaseRef.current = "purchasing";
     try {
-      const res = await fetch(`${BASE_URL}/api/drops/${dropId}/purchase`, {
+      const res = await fetch(`${MONOLITH_URL}/api/drops/${dropId}/purchase`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reservationId: reservation.id, userId }),
       });
-      if (res.ok) { setPhase("purchased"); phaseRef.current = "purchased"; toast.success("Copped!"); }
-      else { setPhase("reserved"); phaseRef.current = "reserved"; toast.error("Purchase failed!"); }
+      if (res.ok) { setPhase("purchased"); phaseRef.current = "purchased"; toast.success("GOT 'EM!"); }
+      else { setPhase("reserved"); phaseRef.current = "reserved"; toast.error("Fail!"); }
     } catch (e) { setPhase("reserved"); phaseRef.current = "reserved"; }
   };
 
-  if (phase === "purchased") return <div className="w-full py-3 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-200 text-center font-bold">✓ GOT 'EM</div>;
-  if (phase === "expired") return <div className="w-full py-3 rounded-xl bg-red-50 text-red-500 border border-red-100 text-center font-medium">Missed it! Try again.</div>;
+  if (phase === "purchased") return <div className="w-full py-4 rounded-xl bg-green-500 text-white text-center font-black">✓ PURCHASED</div>;
+  if (phase === "expired") return <div className="w-full py-4 rounded-xl bg-red-100 text-red-600 text-center font-bold">EXPIRED</div>;
 
   if (phase === "reserved" || phase === "purchasing") {
     return (
-      <div className="space-y-3 p-4 rounded-2xl bg-white shadow-xl border border-gray-100 animate-in fade-in zoom-in duration-300">
-        <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-gray-400">
-          <span>Checkout Window</span>
-          <span className={secondsLeft <= 10 ? "text-red-500 animate-pulse" : "text-blue-500"}>{secondsLeft}s left</span>
-        </div>
-        <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-          <div 
-            className={`h-full transition-all duration-1000 ease-linear ${secondsLeft <= 10 ? "bg-red-500" : "bg-blue-500"}`}
-            style={{ width: `${(secondsLeft / 60) * 100}%` }}
-          />
+      <div className="space-y-4 p-4 rounded-2xl bg-white shadow-2xl border-2 border-blue-500">
+        <div className="flex justify-between font-bold text-sm">
+          <span>COUPON EXPIRES IN</span>
+          <span className="text-blue-600">{secondsLeft}s</span>
         </div>
         <button
           onClick={handlePurchase}
           disabled={phase === "purchasing"}
-          className="w-full py-3 rounded-xl bg-black text-white font-bold hover:bg-gray-800 transition-all active:scale-95 disabled:opacity-50"
+          className="w-full py-4 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-700 transition-all shadow-lg active:scale-95"
         >
-          {phase === "purchasing" ? "VERIFYING..." : "PURCHASE NOW"}
+          {phase === "purchasing" ? "PAYING..." : "BUY NOW"}
         </button>
       </div>
     );
   }
 
-  const isOutOfStock = stock <= 0;
   return (
     <button
       onClick={handleReserve}
-      disabled={isOutOfStock || phase !== "idle"}
-      className={`w-full py-4 rounded-xl font-black uppercase tracking-tighter text-lg transition-all duration-300 transform active:scale-95 ${
-        isOutOfStock ? "bg-gray-100 text-gray-400 cursor-not-allowed" :
-        phase === "waiting" ? "bg-amber-400 text-black animate-pulse cursor-wait shadow-lg shadow-amber-200" :
-        phase === "queued" ? "bg-blue-600 text-white animate-pulse cursor-wait" :
-        "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-2xl hover:shadow-blue-200"
+      disabled={stock <= 0 || phase !== "idle"}
+      className={`w-full py-4 rounded-xl font-black text-lg transition-all active:scale-95 ${
+        stock <= 0 ? "bg-gray-200 text-gray-400" :
+        phase === "waiting" ? "bg-amber-400 animate-pulse" :
+        phase === "queued" ? "bg-blue-400 animate-pulse" : "bg-black text-white hover:bg-gray-800"
       }`}
     >
-      {isOutOfStock ? "SOLD OUT" : 
-       phase === "waiting" ? "In Waitlist..." : 
-       phase === "queued" ? "Entering Queue..." : "Reserve Now"}
+      {stock <= 0 ? "SOLD OUT" : 
+       phase === "waiting" ? "WAITING..." : 
+       phase === "queued" ? "QUEUED..." : "RESERVE NOW"}
     </button>
   );
 }
