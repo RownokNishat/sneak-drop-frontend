@@ -101,18 +101,22 @@ function ReservationButton({ dropId, userId, stock, socket }) {
 
     const onReservationSuccess = (data) => {
       if (data.userId !== userId || data.dropId !== dropId) return;
+      console.log("🚀 Reservation success received via socket");
       activateReservation(data.reservation.id, data.reservation.expiresAt);
     };
 
     const onReservationFailed = (data) => {
       if (data.userId !== userId || data.dropId !== dropId) return;
+      console.error("❌ Reservation failed received via socket:", data.message);
       clearInterval(pollRef.current);
       setPhase("idle");
       phaseRef.current = "idle";
+      toast.error(data.message || "Reservation failed");
     };
 
     const onReservationExpired = (data) => {
       if (data.userId !== userId || data.dropId !== dropId) return;
+      console.log("⏰ Reservation expired received via socket");
       clearInterval(timerRef.current);
       clearInterval(pollRef.current);
       setPhase("expired");
@@ -126,6 +130,11 @@ function ReservationButton({ dropId, userId, stock, socket }) {
     socket.on("reservation-success", onReservationSuccess);
     socket.on("reservation-failed", onReservationFailed);
     socket.on("reservation-expired", onReservationExpired);
+
+    // If we were already in queue, let's double check immediately in case we missed a message
+    if (phase === "queued") {
+        startPolling();
+    }
 
     return () => {
       socket.off("reservation-success", onReservationSuccess);
