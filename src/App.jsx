@@ -35,12 +35,22 @@ function App() {
     if (!socket) return;
 
     const handleGlobalUpdate = () => {
-      // Refresh all drops to get latest data
       fetchDrops();
     };
 
+    const handleNewDrop = (newDrop) => {
+      setDrops((prev) => {
+        if (prev.some((d) => d.id === newDrop.id)) return prev;
+        return [newDrop, ...prev];
+      });
+    };
+
     socket.on("global-stock-update", handleGlobalUpdate);
-    return () => socket.off("global-stock-update", handleGlobalUpdate);
+    socket.on("new-drop", handleNewDrop);
+    return () => {
+      socket.off("global-stock-update", handleGlobalUpdate);
+      socket.off("new-drop", handleNewDrop);
+    };
   }, [socket]);
 
   return (
