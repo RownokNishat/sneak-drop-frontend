@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 const RESERVATION_WINDOW_MS = 120000; // Increased to 2 minutes
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
-// Phases: idle → queued → reserved → purchasing → purchased | expired
+// Phases: idle → queued → waiting → reserved → purchasing → purchased | expired
 function ReservationButton({ dropId, userId, stock, socket }) {
   const [phase, setPhase] = useState("idle");
   const [reservation, setReservation] = useState(null);
@@ -12,31 +12,6 @@ function ReservationButton({ dropId, userId, stock, socket }) {
   const timerRef = useRef(null);
   const pollRef = useRef(null);
   const phaseRef = useRef("idle");
-
-  // Start the 60-second countdown timer given an expiry timestamp
-  const startCountdown = useCallback((expiresAt) => {
-    clearInterval(timerRef.current);
-    const secs = Math.max(
-      0,
-      Math.floor((new Date(expiresAt) - Date.now()) / 1000)
-    );
-    setSecondsLeft(secs);
-    timerRef.current = setInterval(() => {
-      setSecondsLeft((s) => {
-        if (s <= 1) {
-          clearInterval(timerRef.current);
-          setPhase("expired");
-          phaseRef.current = "expired";
-          setTimeout(() => {
-            setPhase("idle");
-            phaseRef.current = "idle";
-          }, 3000);
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-  }, []);
 
   // Activate the reserved phase — called by either socket event or polling
   const activateReservation = useCallback(
@@ -47,12 +22,8 @@ function ReservationButton({ dropId, userId, stock, socket }) {
       phaseRef.current = "reserved";
       startCountdown(expiresAt);
     },
-    [startCountdown]
+    []
   );
-
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
 
   // Check for existing reservation on mount or when userId changes
   useEffect(() => {
@@ -77,6 +48,10 @@ function ReservationButton({ dropId, userId, stock, socket }) {
     checkExisting();
   }, [userId, dropId, activateReservation]);
 
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
   useEffect(
     () => () => {
       clearInterval(timerRef.current);
@@ -85,6 +60,31 @@ function ReservationButton({ dropId, userId, stock, socket }) {
     []
   );
 
+  // Start the 60-second countdown timer given an expiry timestamp
+  const startCountdown = (expiresAt) => {
+    clearInterval(timerRef.current);
+    const secs = Math.max(
+      0,
+      Math.floor((new Date(expiresAt) - Date.now()) / 1000)
+    );
+    setSecondsLeft(secs);
+    timerRef.current = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(timerRef.current);
+          setPhase("expired");
+          phaseRef.current = "expired";
+          setTimeout(() => {
+            setPhase("idle");
+            phaseRef.current = "idle";
+          }, 3000);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+  };
+
   // Poll reservations API every 2s while in queued phase
   const startPolling = useCallback(() => {
     clearInterval(pollRef.current);
@@ -92,7 +92,7 @@ function ReservationButton({ dropId, userId, stock, socket }) {
 
     pollRef.current = setInterval(async () => {
       // Socket event already handled it — stop polling
-      if (phaseRef.current !== "queued") {
+      if (phaseRef.current !== "queued" && phaseRef.current !== "waiting") {
         clearInterval(pollRef.current);
         return;
       }
@@ -150,21 +150,30 @@ function ReservationButton({ dropId, userId, stock, socket }) {
       }, 3000);
     };
 
+    const onReservationWaiting = (data) => {
+      if (data.userId !== userId || data.dropId !== dropId) return;
+      console.log("⏳ Waitlist status received:", data.message);
+      setPhase("waiting");
+      phaseRef.current = "waiting";
+    };
+
     socket.on("reservation-success", onReservationSuccess);
     socket.on("reservation-failed", onReservationFailed);
     socket.on("reservation-expired", onReservationExpired);
+    socket.on("reservation-waiting", onReservationWaiting);
 
-    // If we were already in queue, let's double check immediately in case we missed a message
-    if (phase === "queued") {
-        startPolling();
+    // If we were already in queue, let's double check immediately
+    if (phaseRef.current === "queued" || phaseRef.current === "waiting") {
+      startPolling();
     }
 
     return () => {
       socket.off("reservation-success", onReservationSuccess);
       socket.off("reservation-failed", onReservationFailed);
       socket.off("reservation-expired", onReservationExpired);
+      socket.off("reservation-waiting", onReservationWaiting);
     };
-  }, [socket, userId, dropId, activateReservation]);
+  }, [socket, userId, dropId, activateReservation, startPolling]);
 
   const handleReserve = async () => {
     if (!userId) {
@@ -183,7 +192,6 @@ function ReservationButton({ dropId, userId, stock, socket }) {
       });
       const data = await res.json();
       if (res.ok) {
-        // Start polling immediately — don't rely only on socket event
         startPolling();
       } else {
         toast.error(data.error || "Failed to reserve");
@@ -215,7 +223,7 @@ function ReservationButton({ dropId, userId, stock, socket }) {
         toast.success("Purchase successful!");
       } else {
         toast.error(data.error || "Purchase failed");
-        if (data.error === "Reservation has expired") {
+        if (data.error.includes("expired")) {
           clearInterval(timerRef.current);
           setPhase("expired");
           phaseRef.current = "expired";
@@ -290,17 +298,19 @@ function ReservationButton({ dropId, userId, stock, socket }) {
   return (
     <button
       onClick={handleReserve}
-      disabled={phase === "queued" || isOutOfStock || !userId}
+      disabled={phase === "queued" || phase === "waiting" || isOutOfStock || !userId}
       className={`w-full py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
         isOutOfStock
           ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-          : phase === "queued"
+          : phase === "queued" || phase === "waiting"
           ? "bg-yellow-400 text-black cursor-wait animate-pulse"
           : "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
       }`}
     >
       {isOutOfStock
         ? "Sold Out"
+        : phase === "waiting"
+        ? "In Waitlist..."
         : phase === "queued"
         ? "In Queue..."
         : "Reserve Now"}
