@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import Layout from "./components/Layout";
 import Marketplace from "./pages/Marketplace";
 import LoginPage from "./pages/LoginPage";
+import LoadingPage from "./pages/LoadingPage";
+import ErrorPage from "./pages/ErrorPage";
 import AdminPanel from "./components/AdminPanel";
 import { useSocket } from "./hooks/useSocket";
 import { useDrops } from "./hooks/useDrops";
@@ -48,6 +50,8 @@ function App() {
               isAdmin(user) ? <AdminPanel /> : <Navigate to="/" />
             }
           />
+          {/* 404 Route */}
+          <Route path="*" element={<ErrorPage code="404" title="Page Not Found" message="The page you are looking for doesn't exist or has been moved." />} />
         </Routes>
       </Layout>
     </Router>
