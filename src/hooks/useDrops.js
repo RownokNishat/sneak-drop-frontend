@@ -10,11 +10,17 @@ export function useDrops(socket) {
   const fetchDrops = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/api/drops`);
-      if (!res.ok) throw new Error("Failed to fetch drops");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.details || errData.error || "Failed to fetch drops");
+      }
       const data = await res.json();
-      setDrops(data);
+      setDrops(Array.isArray(data) ? data : []);
+      setError(null);
     } catch (err) {
+      console.error("Fetch error:", err);
       setError(err.message);
+      setDrops([]);
     } finally {
       setLoading(false);
     }
@@ -27,14 +33,12 @@ export function useDrops(socket) {
   useEffect(() => {
     if (!socket) return;
 
-    // Listen for stock updates
     const handleStockUpdate = ({ dropId, availableStock }) => {
       setDrops((prev) =>
         prev.map((d) => (d.id === dropId ? { ...d, availableStock } : d))
       );
     };
 
-    // Listen for new purchases to update activity feed
     const handlePurchaseCompleted = ({ dropId, username }) => {
       setDrops((prev) =>
         prev.map((d) => {
