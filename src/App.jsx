@@ -1,3 +1,4 @@
+// Redis setup
 import { useState, useEffect } from "react";
 import { Toaster } from "react-hot-toast";
 import DropCard from "./components/DropCard";
