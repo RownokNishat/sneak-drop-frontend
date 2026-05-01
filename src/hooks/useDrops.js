@@ -33,12 +33,23 @@ export function useDrops(socket) {
   useEffect(() => {
     if (!socket) return;
 
+    // Listen for stock updates
     const handleStockUpdate = ({ dropId, availableStock }) => {
       setDrops((prev) =>
         prev.map((d) => (d.id === dropId ? { ...d, availableStock } : d))
       );
     };
 
+    // Listen for new drops
+    const handleNewDrop = (newDrop) => {
+      setDrops((prev) => {
+        // Prevent duplicates
+        if (prev.some(d => d.id === newDrop.id)) return prev;
+        return [newDrop, ...prev];
+      });
+    };
+
+    // Listen for new purchases to update activity feed
     const handlePurchaseCompleted = ({ dropId, username }) => {
       setDrops((prev) =>
         prev.map((d) => {
@@ -52,10 +63,12 @@ export function useDrops(socket) {
     };
 
     socket.on("stockUpdate", handleStockUpdate);
+    socket.on("newDrop", handleNewDrop);
     socket.on("purchaseCompleted", handlePurchaseCompleted);
 
     return () => {
       socket.off("stockUpdate", handleStockUpdate);
+      socket.off("newDrop", handleNewDrop);
       socket.off("purchaseCompleted", handlePurchaseCompleted);
     };
   }, [socket]);
