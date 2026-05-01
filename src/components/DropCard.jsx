@@ -1,94 +1,95 @@
 import { useState, useEffect } from "react";
-import StockDisplay from "./StockDisplay";
 import ReservationButton from "./ReservationButton";
-import { useStockUpdates } from "../hooks/useStockUpdates";
 
-function DropCard({ drop, socket, userId }) {
-  const [purchases, setPurchases] = useState(drop.purchases || []);
-  const { stock, lastUpdate, fetchInitialStock } = useStockUpdates(
-    socket,
-    drop.id,
-  );
+function DropCard({ drop, userId }) {
+  const [recentPurchasers, setRecentPurchasers] = useState(drop.recentPurchasers || []);
 
   useEffect(() => {
-    fetchInitialStock();
-  }, [fetchInitialStock]);
+    setRecentPurchasers(drop.recentPurchasers || []);
+  }, [drop.recentPurchasers]);
 
-  // Listen for new purchases
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleNewPurchase = (data) => {
-      if (data.dropId === drop.id) {
-        setPurchases((prev) => {
-          const newPurchase = {
-            id: data.purchase.id,
-            user: { username: data.purchase.username },
-            createdAt: data.purchase.createdAt,
-          };
-          const updated = [newPurchase, ...prev].slice(0, 3);
-          return updated;
-        });
-      }
-    };
-
-    socket.on("new-purchase", handleNewPurchase);
-    return () => socket.off("new-purchase", handleNewPurchase);
-  }, [socket, drop.id]);
+  const percentage = (drop.availableStock / drop.totalStock) * 100;
+  const isLowStock = drop.availableStock > 0 && drop.availableStock <= 5;
 
   return (
-    <div className="rounded-lg bg-white shadow-md overflow-hidden">
-      {/* Image */}
-      <div className="h-40 bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold">
-        {drop.name}
+    <div className="group relative bg-white rounded-[2rem] shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden border border-slate-100 flex flex-col h-full">
+      {/* Image / Header Area */}
+      <div className="relative h-48 bg-slate-900 overflow-hidden">
+        {drop.imageUrl ? (
+          <img src={drop.imageUrl} alt={drop.name} className="w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform duration-700" />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white text-4xl group-hover:scale-110 transition-transform duration-700">
+            👟
+          </div>
+        )}
+        <div className="absolute top-4 left-4">
+          <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black text-white uppercase tracking-wider">
+            Limited Drop
+          </span>
+        </div>
       </div>
 
-      <div className="p-4 space-y-3">
-        {/* Name & Price */}
-        <div className="flex justify-between items-start">
-          <h3 className="text-lg font-bold text-gray-900">{drop.name}</h3>
-          <span className="text-lg font-bold text-green-600">
+      <div className="p-8 flex flex-col flex-grow">
+        {/* Title & Price */}
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className="text-xl font-black text-slate-900 group-hover:text-indigo-600 transition-colors leading-tight">
+              {drop.name}
+            </h3>
+            <p className="text-sm text-slate-400 mt-1 font-medium">{drop.description || "Premium Quality Sneaker"}</p>
+          </div>
+          <span className="text-2xl font-black text-slate-900">
             ${drop.price}
           </span>
         </div>
 
-        {/* Description */}
-        {drop.description && (
-          <p className="text-sm text-gray-600">{drop.description}</p>
-        )}
-
-        {/* Stock Display */}
-        <div className="flex items-center justify-between py-2 border-t border-b border-gray-100">
-          <span className="text-sm text-gray-500">Available Stock</span>
-          <StockDisplay stock={stock} lastUpdate={lastUpdate} />
+        {/* Stock Status */}
+        <div className="space-y-2 mb-8">
+          <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
+            <span className={isLowStock ? "text-rose-500 animate-pulse" : "text-slate-400"}>
+              {drop.availableStock === 0 ? "Sold Out" : isLowStock ? `Only ${drop.availableStock} Left!` : "Available"}
+            </span>
+            <span className="text-slate-900">{drop.availableStock}/{drop.totalStock}</span>
+          </div>
+          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-1000 ease-out rounded-full ${
+                drop.availableStock === 0 ? "bg-slate-300" : 
+                isLowStock ? "bg-rose-500" : "bg-indigo-600"
+              }`}
+              style={{ width: `${percentage}%` }}
+            ></div>
+          </div>
         </div>
 
         {/* Activity Feed */}
-        <div className="space-y-1">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase">
-            Recent Purchases
+        <div className="mb-8 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+            Recent W's
           </h4>
-          {purchases.length > 0 ? (
-            <ul className="space-y-0.5">
-              {purchases.map((purchase, index) => (
-                <li
-                  key={purchase.id || index}
-                  className="text-sm flex justify-between text-gray-600"
-                >
-                  <span>@{purchase.user.username}</span>
-                  <span className="text-xs text-gray-400">
-                    {new Date(purchase.createdAt).toLocaleTimeString()}
-                  </span>
-                </li>
+          {recentPurchasers.length > 0 ? (
+            <div className="space-y-2">
+              {recentPurchasers.map((username, index) => (
+                <div key={index} className="flex items-center gap-2 text-xs font-bold text-slate-600 animate-in fade-in slide-in-from-left duration-500">
+                  <div className="w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[10px]">🔥</div>
+                  <span>@{username}</span>
+                  <span className="text-[10px] font-medium text-slate-300 ml-auto">Just now</span>
+                </div>
               ))}
-            </ul>
+            </div>
           ) : (
-            <p className="text-xs text-gray-400">No purchases yet</p>
+            <p className="text-xs font-medium text-slate-300 italic">No wins yet. Be the first.</p>
           )}
         </div>
 
-        {/* Reserve / Purchase Button */}
-        <ReservationButton dropId={drop.id} userId={userId} stock={stock} socket={socket} />
+        {/* Reservation Area */}
+        <div className="mt-auto">
+          <ReservationButton 
+            dropId={drop.id} 
+            userId={userId} 
+            availableStock={drop.availableStock}
+          />
+        </div>
       </div>
     </div>
   );
