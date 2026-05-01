@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 function ReservationButton({ dropId, userId, availableStock }) {
-  const [phase, setPhase] = useState("idle"); // idle, reserving, reserved, purchasing, purchased
+  const [phase, setPhase] = useState("idle"); 
   const [reservationId, setReservationId] = useState(null);
   const [timeLeft, setTimeLeft] = useState(60);
   const timerRef = useRef(null);
@@ -44,7 +44,14 @@ function ReservationButton({ dropId, userId, availableStock }) {
       
       const data = await res.json();
       
-      if (!res.ok) throw new Error(data.error || "Reservation failed");
+      if (!res.ok) {
+        // Special handling for foreign key constraint errors (e.g. user deleted from DB)
+        if (data.error?.includes("Foreign key constraint violated")) {
+          toast.error("Session expired. Please log out and back in.");
+          throw new Error("INVALID_USER");
+        }
+        throw new Error(data.error || "Reservation failed");
+      }
 
       setReservationId(data.id);
       setPhase("reserved");
@@ -52,7 +59,9 @@ function ReservationButton({ dropId, userId, availableStock }) {
       toast.success("Reserved! You have 60 seconds to buy.");
     } catch (error) {
       setPhase("idle");
-      toast.error(error.message);
+      if (error.message !== "INVALID_USER") {
+        toast.error(error.message);
+      }
     }
   };
 
@@ -116,7 +125,7 @@ function ReservationButton({ dropId, userId, availableStock }) {
           : "bg-slate-900 hover:bg-black text-white shadow-slate-200"
       }`}
     >
-      {phase === "reserving" ? "Checking Stock..." : availableStock === 0 ? "Sold Out" : "Reserve Now"}
+      {phase === "reserving" ? "Checking..." : availableStock === 0 ? "Sold Out" : "Reserve Now"}
     </button>
   );
 }
