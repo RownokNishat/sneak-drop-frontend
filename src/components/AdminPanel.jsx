@@ -19,14 +19,14 @@ function AdminPanel() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.price || !formData.totalStock) {
-      toast.error("Please fill in required fields");
+      toast.error("Required fields missing");
       return;
     }
 
     setLoading(true);
     try {
       await api.drops.create(formData);
-      toast.success("New Drop Broadcasted!");
+      toast.success("Drop created");
       setFormData({
         name: "",
         description: "",
@@ -35,7 +35,7 @@ function AdminPanel() {
         imageUrl: "",
       });
     } catch (error) {
-      toast.error(error.message || "Failed to create drop");
+      toast.error(error.message);
     } finally {
       setLoading(false);
     }
@@ -46,17 +46,14 @@ function AdminPanel() {
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h2 className="text-4xl font-black text-slate-900 tracking-tight">
-            Admin Dashboard
+            Admin
           </h2>
-          <p className="text-slate-500 mt-2">
-            Manage live inventory and broadcast new hype drops.
-          </p>
         </div>
         <Link
           to="/"
           className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors"
         >
-          ← Back to Marketplace
+          ← Back
         </Link>
       </div>
 
@@ -64,15 +61,15 @@ function AdminPanel() {
         <form onSubmit={handleSubmit} className="space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <InputField
-              label="Product Name*"
-              placeholder="e.g. Jordan 1 Retro"
+              label="Name*"
+              placeholder="Product Name"
               value={formData.name}
               onChange={updateField("name")}
             />
             <InputField
               label="Price ($)*"
               type="number"
-              placeholder="180"
+              placeholder="0.00"
               value={formData.price}
               onChange={updateField("price")}
             />
@@ -83,7 +80,6 @@ function AdminPanel() {
               Description
             </label>
             <textarea
-              placeholder="Tell the story of this drop..."
               className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:outline-none focus:border-indigo-500 transition-colors font-bold h-32 resize-none"
               value={formData.description}
               onChange={updateField("description")}
@@ -92,7 +88,7 @@ function AdminPanel() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <InputField
-              label="Initial Stock*"
+              label="Stock*"
               type="number"
               placeholder="100"
               value={formData.totalStock}
@@ -109,9 +105,9 @@ function AdminPanel() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-white text-slate-900 hover:bg-slate-100 py-6 rounded-2xl font-black text-xl transition-all shadow-xl shadow-indigo-900/40 active:scale-[0.98] disabled:opacity-50 mt-4"
+            className="w-full bg-white text-slate-900 hover:bg-slate-100 py-6 rounded-2xl font-black text-xl transition-all disabled:opacity-50 mt-4"
           >
-            {loading ? "INITIALIZING DROP..." : "BROADCAST TO MARKETPLACE 🚀"}
+            {loading ? "Wait..." : "Create Drop"}
           </button>
         </form>
       </div>
