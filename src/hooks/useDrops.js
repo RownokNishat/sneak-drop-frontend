@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+import { api } from "../lib/api";
 
 export function useDrops(socket) {
   const [drops, setDrops] = useState([]);
@@ -9,12 +8,7 @@ export function useDrops(socket) {
 
   const fetchDrops = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/drops`);
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.details || errData.error || "Failed to fetch drops");
-      }
-      const data = await res.json();
+      const data = await api.drops.getAll();
       setDrops(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
@@ -33,31 +27,25 @@ export function useDrops(socket) {
   useEffect(() => {
     if (!socket) return;
 
-    // Listen for stock updates
     const handleStockUpdate = ({ dropId, availableStock }) => {
       setDrops((prev) =>
         prev.map((d) => (d.id === dropId ? { ...d, availableStock } : d))
       );
     };
 
-    // Listen for new drops
     const handleNewDrop = (newDrop) => {
       setDrops((prev) => {
-        // Prevent duplicates
-        if (prev.some(d => d.id === newDrop.id)) return prev;
+        if (prev.some((d) => d.id === newDrop.id)) return prev;
         return [newDrop, ...prev];
       });
     };
 
-    // Listen for new purchases to update activity feed
     const handlePurchaseCompleted = ({ dropId, username }) => {
       setDrops((prev) =>
         prev.map((d) => {
-          if (d.id === dropId) {
-            const newPurchasers = [username, ...(d.recentPurchasers || [])].slice(0, 3);
-            return { ...d, recentPurchasers: newPurchasers };
-          }
-          return d;
+          if (d.id !== dropId) return d;
+          const updated = [username, ...(d.recentPurchasers || [])].slice(0, 3);
+          return { ...d, recentPurchasers: updated };
         })
       );
     };

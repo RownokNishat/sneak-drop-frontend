@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+import { api } from "../lib/api";
+import { RESERVATION_DURATION_S } from "../lib/constants";
 
 function ReservationButton({ dropId, userId, availableStock }) {
-  const [phase, setPhase] = useState("idle"); 
+  const [phase, setPhase] = useState("idle");
   const [reservationId, setReservationId] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(60);
+  const [timeLeft, setTimeLeft] = useState(RESERVATION_DURATION_S);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -16,9 +16,9 @@ function ReservationButton({ dropId, userId, availableStock }) {
   }, []);
 
   const startTimer = () => {
-    setTimeLeft(60);
+    setTimeLeft(RESERVATION_DURATION_S);
     if (timerRef.current) clearInterval(timerRef.current);
-    
+
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -26,7 +26,7 @@ function ReservationButton({ dropId, userId, availableStock }) {
           setPhase("idle");
           setReservationId(null);
           toast.error("Reservation expired!");
-          return 60;
+          return RESERVATION_DURATION_S;
         }
         return prev - 1;
       });
@@ -36,30 +36,16 @@ function ReservationButton({ dropId, userId, availableStock }) {
   const handleReserve = async () => {
     setPhase("reserving");
     try {
-      const res = await fetch(`${API_URL}/api/reservations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, dropId }),
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        // Special handling for foreign key constraint errors (e.g. user deleted from DB)
-        if (data.error?.includes("Foreign key constraint violated")) {
-          toast.error("Session expired. Please log out and back in.");
-          throw new Error("INVALID_USER");
-        }
-        throw new Error(data.error || "Reservation failed");
-      }
-
+      const data = await api.reservations.create(userId, dropId);
       setReservationId(data.id);
       setPhase("reserved");
       startTimer();
       toast.success("Reserved! You have 60 seconds to buy.");
     } catch (error) {
       setPhase("idle");
-      if (error.message !== "INVALID_USER") {
+      if (error.message?.includes("Foreign key")) {
+        toast.error("Session expired. Please log out and back in.");
+      } else {
         toast.error(error.message);
       }
     }
@@ -68,16 +54,7 @@ function ReservationButton({ dropId, userId, availableStock }) {
   const handlePurchase = async () => {
     setPhase("purchasing");
     try {
-      const res = await fetch(`${API_URL}/api/purchases`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, dropId, reservationId }),
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) throw new Error(data.error || "Purchase failed");
-
+      await api.purchases.create(userId, dropId, reservationId);
       setPhase("purchased");
       if (timerRef.current) clearInterval(timerRef.current);
       toast.success("SUCCESS! Item purchased.");
@@ -99,8 +76,12 @@ function ReservationButton({ dropId, userId, availableStock }) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center px-2">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Expires in</span>
-          <span className={`text-sm font-black ${timeLeft < 10 ? "text-rose-500 animate-pulse" : "text-indigo-600"}`}>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            Expires in
+          </span>
+          <span
+            className={`text-sm font-black ${timeLeft < 10 ? "text-rose-500 animate-pulse" : "text-indigo-600"}`}
+          >
             {timeLeft}s
           </span>
         </div>
@@ -120,12 +101,16 @@ function ReservationButton({ dropId, userId, availableStock }) {
       onClick={handleReserve}
       disabled={availableStock === 0 || phase === "reserving"}
       className={`w-full py-4 rounded-2xl font-black transition-all shadow-lg active:scale-[0.98] disabled:opacity-50 ${
-        availableStock === 0 
-          ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
+        availableStock === 0
+          ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
           : "bg-slate-900 hover:bg-black text-white shadow-slate-200"
       }`}
     >
-      {phase === "reserving" ? "Checking..." : availableStock === 0 ? "Sold Out" : "Reserve Now"}
+      {phase === "reserving"
+        ? "Checking..."
+        : availableStock === 0
+          ? "Sold Out"
+          : "Reserve Now"}
     </button>
   );
 }

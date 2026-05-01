@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+import { api } from "../lib/api";
 
 function AdminPanel() {
   const [loading, setLoading] = useState(false);
@@ -11,8 +10,11 @@ function AdminPanel() {
     description: "",
     price: "",
     totalStock: "",
-    imageUrl: ""
+    imageUrl: "",
   });
+
+  const updateField = (field) => (e) =>
+    setFormData((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,34 +25,37 @@ function AdminPanel() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/drops`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+      await api.drops.create(formData);
+      toast.success("New Drop Broadcasted!");
+      setFormData({
+        name: "",
+        description: "",
+        price: "",
+        totalStock: "",
+        imageUrl: "",
       });
-
-      if (res.ok) {
-        toast.success("New Drop Broadcasted!");
-        setFormData({ name: "", description: "", price: "", totalStock: "", imageUrl: "" });
-      } else {
-        const err = await res.json();
-        toast.error(err.error || "Failed to create drop");
-      }
     } catch (error) {
-      toast.error("Connection error");
+      toast.error(error.message || "Failed to create drop");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom duration-500">
+    <div className="max-w-4xl mx-auto">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h2 className="text-4xl font-black text-slate-900 tracking-tight">Admin Dashboard</h2>
-          <p className="text-slate-500 mt-2">Manage live inventory and broadcast new hype drops.</p>
+          <h2 className="text-4xl font-black text-slate-900 tracking-tight">
+            Admin Dashboard
+          </h2>
+          <p className="text-slate-500 mt-2">
+            Manage live inventory and broadcast new hype drops.
+          </p>
         </div>
-        <Link to="/" className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors">
+        <Link
+          to="/"
+          className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors"
+        >
           ← Back to Marketplace
         </Link>
       </div>
@@ -58,59 +63,47 @@ function AdminPanel() {
       <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl border border-slate-800">
         <form onSubmit={handleSubmit} className="space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Product Name*</label>
-              <input
-                type="text"
-                placeholder="e.g. Jordan 1 Retro"
-                className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:outline-none focus:border-indigo-500 transition-colors font-bold"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Price ($)*</label>
-              <input
-                type="number"
-                placeholder="180"
-                className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:outline-none focus:border-indigo-500 transition-colors font-bold"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-              />
-            </div>
+            <InputField
+              label="Product Name*"
+              placeholder="e.g. Jordan 1 Retro"
+              value={formData.name}
+              onChange={updateField("name")}
+            />
+            <InputField
+              label="Price ($)*"
+              type="number"
+              placeholder="180"
+              value={formData.price}
+              onChange={updateField("price")}
+            />
           </div>
 
           <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Description</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">
+              Description
+            </label>
             <textarea
               placeholder="Tell the story of this drop..."
               className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:outline-none focus:border-indigo-500 transition-colors font-bold h-32 resize-none"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={updateField("description")}
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Initial Stock*</label>
-              <input
-                type="number"
-                placeholder="100"
-                className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:outline-none focus:border-indigo-500 transition-colors font-bold"
-                value={formData.totalStock}
-                onChange={(e) => setFormData({ ...formData, totalStock: e.target.value })}
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Image URL</label>
-              <input
-                type="text"
-                placeholder="https://..."
-                className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:outline-none focus:border-indigo-500 transition-colors font-bold"
-                value={formData.imageUrl}
-                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-              />
-            </div>
+            <InputField
+              label="Initial Stock*"
+              type="number"
+              placeholder="100"
+              value={formData.totalStock}
+              onChange={updateField("totalStock")}
+            />
+            <InputField
+              label="Image URL"
+              placeholder="https://..."
+              value={formData.imageUrl}
+              onChange={updateField("imageUrl")}
+            />
           </div>
 
           <button
@@ -122,6 +115,23 @@ function AdminPanel() {
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+function InputField({ label, type = "text", placeholder, value, onChange }) {
+  return (
+    <div className="space-y-3">
+      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">
+        {label}
+      </label>
+      <input
+        type={type}
+        placeholder={placeholder}
+        className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:outline-none focus:border-indigo-500 transition-colors font-bold"
+        value={value}
+        onChange={onChange}
+      />
     </div>
   );
 }
