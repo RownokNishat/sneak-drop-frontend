@@ -1,5 +1,7 @@
 import { Navigate } from "react-router-dom";
 import DropCard from "../components/DropCard";
+import LoadingPage from "./LoadingPage";
+import ErrorPage from "./ErrorPage";
 
 function Marketplace({ drops, loading, error, user }) {
   if (!user) return <Navigate to="/login" />;
@@ -16,9 +18,13 @@ function Marketplace({ drops, loading, error, user }) {
       </div>
 
       {loading ? (
-        <SkeletonGrid />
+        <LoadingPage />
       ) : error ? (
-        <ErrorBanner message={error} />
+        <ErrorPage 
+          code="ERR" 
+          title="Connection Lost" 
+          message={error} 
+        />
       ) : drops.length === 0 ? (
         <EmptyState />
       ) : (
@@ -32,27 +38,6 @@ function Marketplace({ drops, loading, error, user }) {
   );
 }
 
-function SkeletonGrid() {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-      {[1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className="h-[450px] rounded-3xl bg-white animate-pulse border border-slate-100"
-        />
-      ))}
-    </div>
-  );
-}
-
-function ErrorBanner({ message }) {
-  return (
-    <div className="rounded-2xl bg-rose-50 border border-rose-100 p-6 text-rose-700 text-center">
-      <p className="font-bold mb-1">Unable to connect to the marketplace</p>
-      <p className="text-sm opacity-80">{message}</p>
-    </div>
-  );
-}
 
 function EmptyState() {
   return (
